@@ -1,6 +1,7 @@
 #include <affine_body/affine_body_state_accessor_feature.h>
 #include <affine_body/affine_body_dynamics.h>
 #include <affine_body/affine_body_vertex_reporter.h>
+#include <affine_body/bdf/abd_bdf2_state.h>
 #include <joint_dof_system/global_joint_dof_manager.h>
 #include <uipc/builtin/attribute_name.h>
 #include <affine_body/utils.h>
@@ -30,11 +31,15 @@ namespace
 }  // namespace
 
 AffineBodyStateAccessorFeatureOverrider::AffineBodyStateAccessorFeatureOverrider(
-    AffineBodyDynamics& abd, AffineBodyVertexReporter& vertex_reporter, GlobalJointDofManager& joint_dof_manager)
+    AffineBodyDynamics&       abd,
+    AffineBodyVertexReporter& vertex_reporter,
+    GlobalJointDofManager&    joint_dof_manager,
+    ABDBDF2State*             bdf2_state)
     : m_abd{abd}
     , m_vertex_reporter{vertex_reporter}
     , m_joint_dof_manager{joint_dof_manager}
 {
+    m_bdf2_state = bdf2_state;
 }
 
 SizeT AffineBodyStateAccessorFeatureOverrider::get_body_count()
@@ -69,6 +74,12 @@ void AffineBodyStateAccessorFeatureOverrider::do_copy_from(const geometry::Simpl
         auto q_v_subview = m_abd.m_impl.body_id_to_q_v.view(q_offset, q_count);
         q_v_subview.copy_from(m_buffer.data());
     }
+
+    // Under BDF2 the history of the written bodies restarts one step back
+    // from the written state, so the next step does not extrapolate across
+    // the jump.
+    if((trans || vel) && m_bdf2_state)
+        m_bdf2_state->restart_history(q_offset, q_count);
 
     // request the vertex reporter to update attributes
     m_vertex_reporter.request_attribute_update();

@@ -121,7 +121,8 @@ The contributor's fork is not modified; main integration must preserve commit an
 
 Latest cross-cutting triage: [2026-09-11 project audit](14-project-audit.md), against
 `4757859c`. This inspection updated documentation only. Open priorities include
-Python facade ownership, BDF2 history startup, build/source-directory aliasing
+Python facade ownership, BDF2 variable-step support (the BDF2 history startup is
+fixed, A02), build/source-directory aliasing
 during staging cleanup, material validation, manual publishing, MeshDoctor, modified curve
 conversion and CUDA graph error propagation. The report distinguishes focused
 reproductions from source-confirmed paths and unverified risks. Passing current

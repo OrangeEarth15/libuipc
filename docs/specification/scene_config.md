@@ -135,16 +135,18 @@ appropriate geometry instead.
 | `integrator/type` | string | `"bdf1"` | `"bdf1"`, `"bdf2"` | Backward differentiation formula used for time integration. Start with BDF1; BDF2 changes numerical damping and transient response. |
 | `cfl/enable` | flag | `0` | `0`, `1` | Enables the contact-system CFL step filter. This is an advanced/experimental high-speed-contact control; leave it off unless a scene has been diagnosed to need it. |
 
-!!! warning "BDF2 startup and variable-step limitation"
+!!! warning "BDF2 history and variable-step limitation"
 
-    The 2026-09-11 audit of `4757859c` found that BDF2 history initialization does
-    not preserve a prescribed nonzero constant velocity at startup. A contact-free
-    particle with velocity 1 m/s and dt=0.01 s advanced 0.0066667 m on its first
-    BDF2 step rather than 0.01 m. The implemented BDF2 coefficients also assume a
-    constant step size; live dt reads do not establish variable-step BDF2 support.
-    Use default BDF1 when relying on these cases until the integration contract is
-    corrected and tested. This is an identified algorithm/history limitation,
-    not a requirement for bitwise repeatability or a change to the solver here.
+    BDF2 predicts from the current and the previous state. Before the first step
+    the history starts one step back at the initial velocity, `x(-1) = x(0) - dt v(0)`
+    and `v(-1) = v(0)`, with the dt of the first step, so a prescribed constant
+    velocity is kept from the first step on: a contact-free particle with velocity
+    1 m/s and dt=0.01 s advances 0.01 m per BDF2 step. A state accessor's
+    `copy_from` restarts the history of the bodies and vertices it writes the same
+    way, from the written state. The implemented BDF2
+    coefficients assume a constant step size; live dt reads do not establish
+    variable-step BDF2 support. Use default BDF1 when the step size changes. This is
+    an algorithm limitation, not a requirement for bitwise repeatability.
 
 ## Newton solve
 

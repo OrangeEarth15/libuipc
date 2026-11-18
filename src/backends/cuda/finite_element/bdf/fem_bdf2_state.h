@@ -5,6 +5,8 @@
 
 namespace uipc::backend::cuda
 {
+class FiniteElementMethod;
+
 class FEMBDF2State final : public SimSystem
 {
   public:
@@ -35,6 +37,13 @@ class FEMBDF2State final : public SimSystem
         return m_impl.v_n_1s.view();
     }
 
+    /**
+     * @brief Start the history of the vertices [offset, offset + count) one
+     * step back from their current state, at their current velocity:
+     * x^{n-1} = x - dt * \dot{x}, \dot{x}^{n-1} = \dot{x}, with the scene's dt.
+     */
+    void restart_history(SizeT offset, SizeT count);
+
   private:
     void resize(SizeT size);
 
@@ -49,6 +58,9 @@ class FEMBDF2State final : public SimSystem
     cuda_tool::BufferView<Vector3> v_n_1s() { return m_impl.v_n_1s.view(); }
 
     Impl m_impl;
+
+    SimSystemSlot<FiniteElementMethod>      m_finite_element_method;
+    S<const geometry::AttributeSlot<Float>> m_dt_attr;
 
     void do_build() override;
 };

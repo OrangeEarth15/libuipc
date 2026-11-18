@@ -1,6 +1,7 @@
 #include <finite_element/finite_element_state_accessor_feature.h>
 #include <finite_element/finite_element_method.h>
 #include <finite_element/finite_element_vertex_reporter.h>
+#include <finite_element/bdf/fem_bdf2_state.h>
 #include <uipc/builtin/attribute_name.h>
 
 namespace uipc::backend::cuda
@@ -19,10 +20,11 @@ void copy_to_buffer_view(cuda_tool::CBufferView<Vector3> src_view,
 }
 
 FiniteElementStateAccessorFeatureOverrider::FiniteElementStateAccessorFeatureOverrider(
-    FiniteElementMethod& fem, FiniteElementVertexReporter& vertex_reporter)
+    FiniteElementMethod& fem, FiniteElementVertexReporter& vertex_reporter, FEMBDF2State* bdf2_state)
     : m_fem{fem}
     , m_vertex_reporter{vertex_reporter}
 {
+    m_bdf2_state = bdf2_state;
 }
 
 SizeT FiniteElementStateAccessorFeatureOverrider::get_vertex_count()
@@ -55,6 +57,12 @@ void FiniteElementStateAccessorFeatureOverrider::do_copy_from(const geometry::Si
         auto v_subview = m_fem.m_impl.vs.view(v_offset, v_count);
         v_subview.copy_from(vel_view.data());
     }
+
+    // Under BDF2 the history of the written vertices restarts one step back
+    // from the written state, so the next step does not extrapolate across
+    // the jump.
+    if((pos || vel) && m_bdf2_state)
+        m_bdf2_state->restart_history(v_offset, v_count);
 
     // request the vertex reporter to update attributes
     m_vertex_reporter.request_attribute_update();

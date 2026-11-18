@@ -43,6 +43,14 @@ $$
 
 where $\mathbf{q}^t$, is the previous state vector at time $t$, $\mathbf{v}^t$ is the previous velocity vector at time $t$, $\Delta t$ is the time step size, and $\mathbf{g}$ is the gravitational acceleration.
 
+When `bdf2` is used, the external acceleration $\mathbf{a}_{ext}$ is combined with gravity before being passed to the BDF2 predictor:
+
+$$
+\mathbf{g}_{\text{eff}} = \mathbf{g} + \mathbf{a}_{ext}
+$$
+
+The joint forces of [AffineBodyPrismaticJointExternalForce](./affine_body_prismatic_joint_external_force.md) and [AffineBodyRevoluteJointExternalForce](./affine_body_revolute_joint_external_force.md) enter the same way.
+
 Users are allowed to modify the external force $\mathbf{F}_{ext}$ using the `uipc` Animator System interface during the simulation.
 
 ## Activation and animation

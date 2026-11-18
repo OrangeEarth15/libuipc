@@ -104,9 +104,9 @@ class FEMBDF2Integrator final : public FEMTimeIntegrator
         if(state->x_n_1s().size() != info.xs().size())
         {
             state->resize(info.xs().size());
-            // Bootstrap history from current x_n and v_n.
-            state->x_n_1s().copy_from(info.x_prevs());
-            state->v_n_1s().copy_from(info.vs());
+            // Start the history one step back at the current velocity, so a
+            // vertex without forces moves dt * v in its first step too.
+            state->restart_history(0, info.xs().size());
         }
 
         auto k = FEMBDF2Integrator_do_predict_dof_kernel;

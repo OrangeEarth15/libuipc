@@ -5,6 +5,8 @@
 
 namespace uipc::backend::cuda
 {
+class AffineBodyDynamics;
+
 class ABDBDF2State final : public SimSystem
 {
   public:
@@ -35,6 +37,13 @@ class ABDBDF2State final : public SimSystem
         return m_impl.q_v_n_1s.view();
     }
 
+    /**
+     * @brief Start the history of the bodies [offset, offset + count) one
+     * step back from their current state, at their current velocity:
+     * q^{n-1} = q - dt * \dot{q}, \dot{q}^{n-1} = \dot{q}, with the scene's dt.
+     */
+    void restart_history(SizeT offset, SizeT count);
+
   private:
     void resize(SizeT size);
 
@@ -52,6 +61,9 @@ class ABDBDF2State final : public SimSystem
     }
 
     Impl m_impl;
+
+    SimSystemSlot<AffineBodyDynamics>       m_affine_body_dynamics;
+    S<const geometry::AttributeSlot<Float>> m_dt_attr;
 
     void do_build() override;
 };

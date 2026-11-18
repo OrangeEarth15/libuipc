@@ -19,6 +19,7 @@ namespace
         cuda_tool::CBufferView<Vector12> q_v_n_1s,
         cuda_tool::BufferView<Vector12>  q_tildes,
         cuda_tool::CBufferView<Vector12> gravity,
+        cuda_tool::CBufferView<Vector12> external_force_accs,
         Float                            dt,
         int                              n)
     {
@@ -31,7 +32,7 @@ namespace
         Vector12 q_n_1   = q_n_1s(i);
         Vector12 q_v_n   = q_v_ns(i);
         Vector12 q_v_n_1 = q_v_n_1s(i);
-        Vector12 g       = gravity(i);
+        Vector12 g       = gravity(i) + external_force_accs(i);
 
         if(is_fixed(i))
         {
@@ -103,9 +104,9 @@ class ABDBDF2Integrator final : public ABDTimeIntegrator
         if(state->q_n_1s().size() != info.qs().size())
         {
             state->resize(info.qs().size());
-            // Bootstrap history from current q_n and v_n.
-            state->q_n_1s().copy_from(info.q_prevs());
-            state->q_v_n_1s().copy_from(info.q_vs());
+            // Start the history one step back at the current velocity, so a
+            // body without forces moves dt * v in its first step too.
+            state->restart_history(0, info.qs().size());
         }
 
         int n = (int)info.qs().size();
@@ -122,6 +123,7 @@ class ABDBDF2Integrator final : public ABDTimeIntegrator
                 state->q_v_n_1s().cview(),
                 info.q_tildes(),
                 info.gravities().cview(),
+                info.external_force_accs().cview(),
                 info.dt(),
                 n);
         }

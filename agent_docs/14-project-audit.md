@@ -100,6 +100,13 @@ facade after deleting its owner.
 
 ### A02 · P1 · BDF2 startup does not preserve a prescribed constant velocity
 
+**Resolved (2026-11-18) for the startup**: both BDF2 integrators start the
+history one step back at the initial velocity, `x(-1) = x(0) - dt v(0)` and
+`v(-1) = v(0)` (`FEMBDF2State` / `ABDBDF2State::restart_history`), so the
+probe below advances 0.01 m per step from the first one on
+(`python/tests/test_bdf2_history.py`). The variable-step limitation below
+remains.
+
 **Reproduced algorithmic issue, unrelated to atomic rounding.** A single particle
 with velocity `(1,0,0)`, zero gravity and disabled contact should move 0.01 m per
 0.01 s step. BDF1 gave `[0.01, 0.02, 0.03, 0.04]`; BDF2 gave

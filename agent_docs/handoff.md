@@ -1,5 +1,12 @@
 # Handoff — Current State of the Repo
 
+> **BDF2 history start (2026-11-18)**: both BDF2 integrators start their
+> history one step back at the initial velocity, `x(-1) = x(0) - dt v(0)` and
+> `v(-1) = v(0)`, with the dt of the first step, instead of taking the initial
+> state for both (audit A02, doc 14). A body without forces keeps its velocity
+> from the first step on; a scene that starts at rest is unchanged. Test:
+> `python/tests/test_bdf2_history.py` (the closed form of the scheme).
+
 > **Opt-in preconditioner reuse (2026-11-18)**: `linear_system/keep_preconditioner`
 > (default 0) lets every odd Newton iteration from the third on keep the
 > previous iteration's preconditioner on the standard IPC pipeline. It is off

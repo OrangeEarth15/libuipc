@@ -2,6 +2,7 @@
 #include <affine_body/affine_body_state_accessor_feature.h>
 #include <affine_body/affine_body_dynamics.h>
 #include <affine_body/affine_body_vertex_reporter.h>
+#include <affine_body/bdf/abd_bdf2_state.h>
 #include <joint_dof_system/global_joint_dof_manager.h>
 
 namespace uipc::backend::cuda
@@ -17,10 +18,11 @@ class AffineBodyStateAccessor final : public SimSystem
         auto& affine_body_dynamics        = require<AffineBodyDynamics>();
         auto& affine_body_vertex_reporter = require<AffineBodyVertexReporter>();
         auto& global_joint_dof_manager    = require<GlobalJointDofManager>();
+        auto* abd_bdf2_state              = find<ABDBDF2State>();
 
         // Register the AffineBodyStateAccessorFeature
         auto overrider = std::make_shared<AffineBodyStateAccessorFeatureOverrider>(
-            affine_body_dynamics, affine_body_vertex_reporter, global_joint_dof_manager);
+            affine_body_dynamics, affine_body_vertex_reporter, global_joint_dof_manager, abd_bdf2_state);
 
         auto feature = std::make_shared<core::AffineBodyStateAccessorFeature>(overrider);
         features().insert(feature);

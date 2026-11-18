@@ -2,6 +2,7 @@
 #include <finite_element/finite_element_state_accessor_feature.h>
 #include <finite_element/finite_element_method.h>
 #include <finite_element/finite_element_vertex_reporter.h>
+#include <finite_element/bdf/fem_bdf2_state.h>
 
 namespace uipc::backend::cuda
 {
@@ -15,10 +16,11 @@ class FiniteElementStateAccessor final : public SimSystem
     {
         auto& finite_element_method = require<FiniteElementMethod>();
         auto& finite_element_vertex_reporter = require<FiniteElementVertexReporter>();
+        auto* fem_bdf2_state = find<FEMBDF2State>();
 
         // Register the FiniteElementStateAccessorFeature
         auto overrider = std::make_shared<FiniteElementStateAccessorFeatureOverrider>(
-            finite_element_method, finite_element_vertex_reporter);
+            finite_element_method, finite_element_vertex_reporter, fem_bdf2_state);
         auto feature = std::make_shared<core::FiniteElementStateAccessorFeature>(overrider);
         features().insert(feature);
     }
