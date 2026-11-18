@@ -85,12 +85,13 @@ interface. Call `scene.validate_config()` for an earlier explicit check;
 `world.init(scene)` calls it automatically.
 
 `dt` is the exception: every frame reads it, so a `dt` written between frames
-is the step of the next frame, and what is derived from it follows: the
-contact stiffness corridor `[base / dt^2, 100 base / dt^2]` and the contact
-resistances resolved against it (see
-[Adaptive contact resistance](#adaptive-contact-resistance)) are those of a
-scene initialized with the new `dt`. Under BDF2 a changed step is not a BDF2
-step (see the warning in [Time integration](#time-integration)).
+is the step of the next frame, and what is derived from it follows: the contact
+stiffness corridor `[base / dt^2, 100 base / dt^2]` and the contact resistances
+resolved against it (see
+[Adaptive contact resistance](#adaptive-contact-resistance)), and the AL-IPC
+penalty `m s dt^2`, are those of a scene initialized with the new `dt`. Under
+BDF2 a changed step is not a BDF2 step (see the warning in
+[Time integration](#time-integration)).
 
 In Python, `Scene.default_config()` returns a dictionary, but `scene.config()`
 returns a **ConfigAttributes facade**, not a dictionary. Use `find("dt")` and

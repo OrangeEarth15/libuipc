@@ -5,6 +5,7 @@
 #include <collision_detection/global_trajectory_filter.h>
 #include <collision_detection/simplex_trajectory_filter.h>
 #include <collision_detection/vertex_half_plane_trajectory_filter.h>
+#include <utils/dump_utils.h>
 
 namespace uipc::backend::cuda
 {
@@ -151,6 +152,19 @@ class GlobalActiveSetManager final : public SimSystem
         void advance_non_penetrate_positions(Float alpha);
         void prepare_ccd();
         void post_ccd();
+
+        // A frame starts from the active set (pairs, multipliers, inactive
+        // counts) and the collision-free positions the last one ended with:
+        // a dump holds them, so a recover continues the dumped run.
+        bool dump(DumpInfo& info);
+        bool try_recover(RecoverInfo& info);
+        void apply_recover(RecoverInfo& info);
+        void clear_recover(RecoverInfo& info);
+
+        BufferDump dump_PH_idx, dump_PH_lambda, dump_PH_cnt;
+        BufferDump dump_PT_idx, dump_PT_lambda, dump_PT_cnt;
+        BufferDump dump_EE_idx, dump_EE_lambda, dump_EE_cnt;
+        BufferDump dump_non_penetrate_positions;
     };
 
     cuda_tool::CBufferView<int>      PHs() const;
@@ -190,6 +204,10 @@ class GlobalActiveSetManager final : public SimSystem
 
   protected:
     virtual void do_build() override;
+    virtual bool do_dump(DumpInfo& info) override;
+    virtual bool do_try_recover(RecoverInfo& info) override;
+    virtual void do_apply_recover(RecoverInfo& info) override;
+    virtual void do_clear_recover(RecoverInfo& info) override;
 
   private:
     friend class SimEngine;

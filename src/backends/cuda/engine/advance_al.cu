@@ -347,14 +347,16 @@ void SimEngine::advance_AL()
                         m_global_linear_system->last_solve_iterations();
                 }
 
+                // 5) Collect Vertex Displacements Globally, then test the
+                //    step just solved (as advance_IPC does): the translation
+                //    checker reads these displacements
+                m_global_vertex_manager->collect_vertex_displacements();
+
                 NewtonToleranceManager::ResultInfo result_info;
                 result_info.frame(m_current_frame);
                 result_info.newton_iter(newton_iter);
                 m_newton_tolerance_manager->check(result_info);
                 bool newton_converged = result_info.converged();
-
-                // 5) Collect Vertex Displacements Globally
-                m_global_vertex_manager->collect_vertex_displacements();
 
                 // 6) Begin Line Search
                 m_state                     = SimEngineState::LineSearch;

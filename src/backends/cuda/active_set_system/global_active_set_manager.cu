@@ -1366,8 +1366,10 @@ Float GlobalActiveSetManager::StiffnessEstimateInfo::dt() const noexcept
 
 void GlobalActiveSetManager::Impl::init(WorldVisitor& world)
 {
-    auto config = world.scene().config();
-    dt_attr     = config.find<Float>("dt");
+    // by reference: a copy would keep the attributes of init (they are
+    // copied on write), so the penalty would miss a dt written later
+    auto& config = world.scene().config();
+    dt_attr      = config.find<Float>("dt");
     UIPC_ASSERT(dt_attr, "Scene config must have a 'dt' attribute.");
     decay_factor = config.find<Float>("contact/al-ipc/decay_factor")->view()[0];
     inactive_count_limit = details::al_inactive_count_limit(decay_factor);
@@ -1512,5 +1514,94 @@ void GlobalActiveSetManager::add_stiffness_estimator(ALStiffnessEstimator* estim
 {
     check_state(SimEngineState::BuildSystems, "add_stiffness_estimator()");
     m_impl.stiffness_estimators.register_sim_system(*estimator);
+}
+}  // namespace uipc::backend::cuda
+
+// Dump & Recover:
+namespace uipc::backend::cuda
+{
+bool GlobalActiveSetManager::Impl::dump(DumpInfo& info)
+{
+    auto path  = info.dump_path(UIPC_RELATIVE_SOURCE_FILE);
+    auto frame = info.frame();
+
+    return dump_PH_idx.dump(fmt::format("{}PH_idx.{}", path, frame), PH_idx)  //
+           && dump_PH_lambda.dump(fmt::format("{}PH_lambda.{}", path, frame), PH_lambda)
+           && dump_PH_cnt.dump(fmt::format("{}PH_cnt.{}", path, frame), PH_cnt)
+           && dump_PT_idx.dump(fmt::format("{}PT_idx.{}", path, frame), PT_idx)
+           && dump_PT_lambda.dump(fmt::format("{}PT_lambda.{}", path, frame), PT_lambda)
+           && dump_PT_cnt.dump(fmt::format("{}PT_cnt.{}", path, frame), PT_cnt)
+           && dump_EE_idx.dump(fmt::format("{}EE_idx.{}", path, frame), EE_idx)
+           && dump_EE_lambda.dump(fmt::format("{}EE_lambda.{}", path, frame), EE_lambda)
+           && dump_EE_cnt.dump(fmt::format("{}EE_cnt.{}", path, frame), EE_cnt)
+           && dump_non_penetrate_positions.dump(
+               fmt::format("{}non_penetrate_positions.{}", path, frame), non_penetrate_positions);
+}
+
+bool GlobalActiveSetManager::Impl::try_recover(RecoverInfo& info)
+{
+    auto path  = info.dump_path(UIPC_RELATIVE_SOURCE_FILE);
+    auto frame = info.frame();
+
+    return dump_PH_idx.load(fmt::format("{}PH_idx.{}", path, frame))  //
+           && dump_PH_lambda.load(fmt::format("{}PH_lambda.{}", path, frame))
+           && dump_PH_cnt.load(fmt::format("{}PH_cnt.{}", path, frame))
+           && dump_PT_idx.load(fmt::format("{}PT_idx.{}", path, frame))
+           && dump_PT_lambda.load(fmt::format("{}PT_lambda.{}", path, frame))
+           && dump_PT_cnt.load(fmt::format("{}PT_cnt.{}", path, frame))
+           && dump_EE_idx.load(fmt::format("{}EE_idx.{}", path, frame))
+           && dump_EE_lambda.load(fmt::format("{}EE_lambda.{}", path, frame))
+           && dump_EE_cnt.load(fmt::format("{}EE_cnt.{}", path, frame))
+           && dump_non_penetrate_positions.load(
+               fmt::format("{}non_penetrate_positions.{}", path, frame));
+}
+
+void GlobalActiveSetManager::Impl::apply_recover(RecoverInfo& info)
+{
+    dump_PH_idx.apply_to(PH_idx);
+    dump_PH_lambda.apply_to(PH_lambda);
+    dump_PH_cnt.apply_to(PH_cnt);
+    dump_PT_idx.apply_to(PT_idx);
+    dump_PT_lambda.apply_to(PT_lambda);
+    dump_PT_cnt.apply_to(PT_cnt);
+    dump_EE_idx.apply_to(EE_idx);
+    dump_EE_lambda.apply_to(EE_lambda);
+    dump_EE_cnt.apply_to(EE_cnt);
+    dump_non_penetrate_positions.apply_to(non_penetrate_positions);
+}
+
+void GlobalActiveSetManager::Impl::clear_recover(RecoverInfo& info)
+{
+    for(auto* d : {&dump_PH_idx,
+                   &dump_PH_lambda,
+                   &dump_PH_cnt,
+                   &dump_PT_idx,
+                   &dump_PT_lambda,
+                   &dump_PT_cnt,
+                   &dump_EE_idx,
+                   &dump_EE_lambda,
+                   &dump_EE_cnt,
+                   &dump_non_penetrate_positions})
+        d->clean_up();
+}
+
+bool GlobalActiveSetManager::do_dump(DumpInfo& info)
+{
+    return m_impl.dump(info);
+}
+
+bool GlobalActiveSetManager::do_try_recover(RecoverInfo& info)
+{
+    return m_impl.try_recover(info);
+}
+
+void GlobalActiveSetManager::do_apply_recover(RecoverInfo& info)
+{
+    m_impl.apply_recover(info);
+}
+
+void GlobalActiveSetManager::do_clear_recover(RecoverInfo& info)
+{
+    m_impl.clear_recover(info);
 }
 }  // namespace uipc::backend::cuda

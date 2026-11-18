@@ -58,7 +58,7 @@ legacy component.
 | `collision_detection/` | StacklessBVH, simplex distance, global trajectory filter, DCD/CCD candidate detection |
 | `contact_system/` | IPC / AL-IPC contact models (symplectic/implicit), normal/tangential forces, CFL condition |
 | `distance_system/` | Distance computation |
-| `active_set_system/` | Contact active set |
+| `active_set_system/` | AL-IPC contact active set; a dump holds its pairs, multipliers, inactive counts and collision-free positions, so a recover continues the run |
 | `dytopo_effect_system/` | Dynamic-topology effects (friction and other coupling terms) |
 | `inter_primitive_effect_system/` | Inter-primitive effects (soft stitching, etc.) |
 | `joint_dof_system/` | Joint DOF system |

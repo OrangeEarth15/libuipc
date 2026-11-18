@@ -11,6 +11,10 @@ product ``kappa dt^2`` that the barrier takes. It was computed once, from the
 model the user did not set takes the lower bound, other resistances are
 clamped into it, the adaptive stiffness of every frame is clamped to it).
 Now the tabular is resolved again when ``dt`` changes.
+
+The AL-IPC penalty ``m s dt^2`` took ``dt`` from a copy of the scene config,
+which keeps the attribute of init when the scene's is written; now it takes
+the ``dt`` of the frame.
 """
 
 import numpy as np
@@ -164,3 +168,15 @@ def test_contact_stiffness_follows_a_dt_written_between_frames(tmp_path, scene, 
     recovered = halved_after_15_frames(tmp_path / "recovered", build, resistance, True)
     changed = halved_after_15_frames(tmp_path / "changed", build, resistance, False)
     np.testing.assert_allclose(changed, recovered, rtol=0, atol=1e-9)
+
+
+@pytest.mark.cuda
+@pytest.mark.skipif(skip_cuda_on_macos, reason=skip_cuda_on_macos_reason)
+@pytest.mark.parametrize("scene", SCENES)
+def test_al_ipc_penalty_follows_dt(tmp_path, scene):
+    """The AL-IPC penalty ``m s dt^2`` takes the ``dt`` of the frame."""
+    build = SCENES[scene]
+    halved_at_init = run(tmp_path / "init", build, 0.005, 0.005, 1e9, "al-ipc")
+    # before the fix: 2.6e-2 m (thrown_tet) and 2.4e-4 m (stacked_tets) apart
+    halved_after_init = run(tmp_path / "after", build, 0.01, 0.005, 1e9, "al-ipc")
+    np.testing.assert_allclose(halved_after_init, halved_at_init, rtol=0, atol=1e-9)
