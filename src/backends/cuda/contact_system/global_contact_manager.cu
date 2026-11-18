@@ -275,6 +275,34 @@ void GlobalContactManager::Impl::init(WorldVisitor& world)
         }
     }
 
+    // 0.2) Scene-adaptive kappa corridor
+    _compute_kappa_corridor(world);
+
+    // 1) init tabular
+    _build_contact_tabular(world);
+    _build_subscene_tabular(world);
+
+
+    // 2) vertex contact info
+    vert_is_active_contact.resize(global_vertex_manager->positions().size(), 0);
+    vert_disp_norms.resize(global_vertex_manager->positions().size(), 0.0);
+
+    // 3) reporters
+    auto contact_reporter_view = contact_reporters.view();
+    for(auto&& [i, R] : enumerate(contact_reporter_view))
+        R->init();
+    for(auto&& [i, R] : enumerate(contact_reporter_view))
+        R->m_index = i;
+    if(adaptive_contact_parameter_reporter)
+    {
+        adaptive_contact_parameter_reporter->init();
+    }
+}
+
+// A dt written after init moves the corridor: update_kappa_corridor()
+// computes it again, as for a scene initialised with that dt.
+void GlobalContactManager::Impl::_compute_kappa_corridor(WorldVisitor& world)
+{
     // 0.2) Scene-adaptive kappa corridor: port of Stiff-GIPC's
     //    suggestKappa/upperBoundKappa (GIPC.cu:9850-9888). Their barrier
     //    applies kappa raw while ours is scaled by dt^2, so the computed
@@ -342,26 +370,6 @@ void GlobalContactManager::Impl::init(WorldVisitor& world)
                 dt);
         }
     }
-
-    // 1) init tabular
-    _build_contact_tabular(world);
-    _build_subscene_tabular(world);
-
-
-    // 2) vertex contact info
-    vert_is_active_contact.resize(global_vertex_manager->positions().size(), 0);
-    vert_disp_norms.resize(global_vertex_manager->positions().size(), 0.0);
-
-    // 3) reporters
-    auto contact_reporter_view = contact_reporters.view();
-    for(auto&& [i, R] : enumerate(contact_reporter_view))
-        R->init();
-    for(auto&& [i, R] : enumerate(contact_reporter_view))
-        R->m_index = i;
-    if(adaptive_contact_parameter_reporter)
-    {
-        adaptive_contact_parameter_reporter->init();
-    }
 }
 
 using MaskMatrix = Eigen::Matrix<IndexT, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -397,9 +405,38 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
 
     auto mask_map = Eigen::Map<MaskMatrix>(h_contact_mask_tabular.data(), N, N);
 
+    for(SizeT i = 0; i < topo_view.size(); ++i)
+    {
+        auto  ids                  = topo_view[i];
+        auto& is_enabled           = enabled_view[i];
+        mask_map(ids.x(), ids.y()) = is_enabled;
+        mask_map(ids.y(), ids.x()) = is_enabled;
+    }
+
+    contact_mask_tabular.resize(cuda_tool::Extent2D{N, N});
+    contact_mask_tabular.view().copy_from(h_contact_mask_tabular.data());
+
+    // The models as init reads them: the stiffness depends on the corridor,
+    // which depends on dt, and is resolved again when dt changes, after an
+    // adaptive strategy may have written its stiffness back to the scene.
+    contact_element_count = N;
+    default_model_is_user_set =
+        world.scene().contact_tabular().default_model_is_user_set();
+    h_model_topos.assign(topo_view.begin(), topo_view.end());
+    h_model_resistances.assign(resistance_view.begin(), resistance_view.end());
+    h_model_friction_rates.assign(friction_rate_view.begin(), friction_rate_view.end());
+
+    _resolve_contact_tabular(world);
+}
+
+void GlobalContactManager::Impl::_resolve_contact_tabular(WorldVisitor& world)
+{
+    auto N = contact_element_count;
+
     // Default contact stiffness policy:
     //  - the scene-adaptive corridor [kappa_lower_bound, kappa_upper_bound]
-    //    (Stiff-GIPC suggestKappa/upperBoundKappa, computed in init) rules;
+    //    (Stiff-GIPC suggestKappa/upperBoundKappa, computed for the current
+    //    dt) rules;
     //  - when it is not computable for the scene, fall back to the
     //    contact/adaptive/{min,max}_kappa config values;
     //  - negative kappa (adaptive-kappa opt-in) is never clamped
@@ -411,8 +448,8 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
     if(kappa_upper_bound > 0.0)
         max_kappa = kappa_upper_bound;
 
-    Float default_kappa = resistance_view[0];
-    if(!world.scene().contact_tabular().default_model_is_user_set())
+    Float default_kappa = h_model_resistances[0];
+    if(!default_model_is_user_set)
     {
         default_kappa = min_kappa;
         logger::info("Contact default kappa not set by user; using the kappa lower bound = {}",
@@ -428,16 +465,15 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
         default_kappa = std::clamp(default_kappa, min_kappa, max_kappa);
     }
 
-    h_contact_tabular.resize(
-        N * N, ContactCoeff{.kappa = default_kappa, .mu = friction_rate_view[0]});
+    h_contact_tabular.assign(
+        N * N, ContactCoeff{.kappa = default_kappa, .mu = h_model_friction_rates[0]});
 
     // set the defined contact model
-    for(SizeT i = 0; i < topo_view.size(); ++i)
+    for(SizeT i = 0; i < h_model_topos.size(); ++i)
     {
-        auto  ids        = topo_view[i];
-        Float kappa      = resistance_view[i];
-        Float mu         = friction_rate_view[i];
-        auto& is_enabled = enabled_view[i];
+        auto  ids   = h_model_topos[i];
+        Float kappa = h_model_resistances[i];
+        Float mu    = h_model_friction_rates[i];
 
         // entry 0 is the default model: use the policy-resolved default kappa
         Float kk = (i == 0) ? default_kappa : kappa;
@@ -459,23 +495,23 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
 
         ContactCoeff coeff{.kappa = kk, .mu = mu};
 
-        auto upper                 = ids.x() * N + ids.y();
-        h_contact_tabular[upper]   = coeff;
-        mask_map(ids.x(), ids.y()) = is_enabled;
+        auto upper               = ids.x() * N + ids.y();
+        h_contact_tabular[upper] = coeff;
 
-
-        auto lower                 = ids.y() * N + ids.x();
-        h_contact_tabular[lower]   = coeff;
-        mask_map(ids.y(), ids.x()) = is_enabled;
+        auto lower               = ids.y() * N + ids.x();
+        h_contact_tabular[lower] = coeff;
     }
 
-    contact_tabular = std::make_shared<cuda_tool::DeviceBuffer2D<ContactCoeff>>();
-
-    contact_tabular->resize(cuda_tool::Extent2D{N, N});
+    // a tabular resolved again is written in place
+    if(!contact_tabular)
+    {
+        contact_tabular = std::make_shared<cuda_tool::DeviceBuffer2D<ContactCoeff>>();
+        contact_tabular->resize(cuda_tool::Extent2D{N, N});
+    }
     contact_tabular->view().copy_from(h_contact_tabular.data());
+    ++contact_tabular_version;
 
-    contact_mask_tabular.resize(cuda_tool::Extent2D{N, N});
-    contact_mask_tabular.view().copy_from(h_contact_mask_tabular.data());
+    resolved_dt = dt_attr->view()[0];
 }
 
 void GlobalContactManager::Impl::_build_subscene_tabular(WorldVisitor& world)
@@ -698,6 +734,18 @@ Float GlobalContactManager::finish_feasible_step()
 void GlobalContactManager::init()
 {
     m_impl.init(world());
+}
+
+void GlobalContactManager::update_kappa_corridor()
+{
+    // The frames read dt from the scene config, and the barrier takes
+    // kappa dt^2. A dt written since the corridor and the contact tabular
+    // were resolved moves both: resolve them again, as for a scene
+    // initialised with that dt.
+    if(m_impl.dt_attr->view()[0] == m_impl.resolved_dt)
+        return;
+    m_impl._compute_kappa_corridor(world());
+    m_impl._resolve_contact_tabular(world());
 }
 
 void GlobalContactManager::compute_adaptive_parameters()

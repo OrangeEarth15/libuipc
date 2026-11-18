@@ -83,7 +83,9 @@ class GlobalContactManager final : public SimSystem
     {
       public:
         void  init(WorldVisitor& world);
+        void  _compute_kappa_corridor(WorldVisitor& world);
         void  _build_contact_tabular(WorldVisitor& world);
+        void  _resolve_contact_tabular(WorldVisitor& world);
         void  _build_subscene_tabular(WorldVisitor& world);
         void  compute_d_hat();
         void  compute_adaptive_kappa();
@@ -118,11 +120,20 @@ class GlobalContactManager final : public SimSystem
 
         // Scene-adaptive kappa corridor, ported from Stiff-GIPC's
         // suggestKappa/upperBoundKappa (GIPC.cu:9850-9888) with the dt^2
-        // convention conversion. Computed once in init(); <= 0 means "not
-        // computable for this scene" and callers fall back to the
-        // contact/adaptive/{min,max}_kappa config values.
+        // convention conversion. Computed in init() and again when dt
+        // changes; <= 0 means "not computable for this scene" and callers
+        // fall back to the contact/adaptive/{min,max}_kappa config values.
         Float kappa_lower_bound = -1.0;
         Float kappa_upper_bound = -1.0;
+
+        // The contact models as init read them, and the dt the corridor and
+        // h_contact_tabular were resolved with (_resolve_contact_tabular).
+        SizeT            contact_element_count     = 0;
+        bool             default_model_is_user_set = false;
+        vector<Vector2i> h_model_topos;
+        vector<Float>    h_model_resistances;
+        vector<Float>    h_model_friction_rates;
+        Float            resolved_dt = 0.0;
 
 
         /***********************************************************************
@@ -173,6 +184,10 @@ class GlobalContactManager final : public SimSystem
     friend class ContactExporterManager;
 
     void init();
+
+    // Resolve the kappa corridor and the contact tabular again when dt was
+    // written since they were resolved (at the start of an IPC frame).
+    void update_kappa_corridor();
 
     void compute_adaptive_parameters();
 

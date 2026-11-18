@@ -90,7 +90,8 @@ resistance is `contact/adaptive/min_kappa` (100 MPa by default). If it does set
 a non-negative value, the backend clamps it into
 `[contact/adaptive/min_kappa, contact/adaptive/max_kappa]` and warns when a
 clamp occurs. A negative resistance is the explicit adaptive-kappa marker and
-is intentionally not clamped.
+is intentionally not clamped. An adaptive default model makes every pair that
+falls back to it adaptive as well.
 
 ## Pairwise material table
 

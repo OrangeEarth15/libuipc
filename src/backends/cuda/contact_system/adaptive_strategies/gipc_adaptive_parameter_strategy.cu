@@ -119,6 +119,23 @@ class GIPCAdaptiveParameterStrategy : public AdaptiveContactParameterReporter
             }
         }
 
+        // The pairs of elements without a model of their own take the
+        // default model (GlobalContactManager::_build_contact_tabular), so
+        // when the user made it adaptive, they are adaptive too.
+        if(scene.contact_tabular().default_model_is_user_set() && kappa_view[0] < 0.0)
+        {
+            std::vector<char> has_model(N * N, 0);
+            for(auto&& topo : topo_view)
+            {
+                has_model[topo.x() * N + topo.y()] = 1;
+                has_model[topo.y() * N + topo.x()] = 1;
+            }
+            for(IndexT i = 0; i < static_cast<IndexT>(N); ++i)
+                for(IndexT j = i; j < static_cast<IndexT>(N); ++j)
+                    if(!has_model[i * N + j])
+                        h_adaptive_topos.push_back(Vector2i{i, j});
+        }
+
         adaptive_topos.copy_from(h_adaptive_topos);
 
         // initialize test contact tabular

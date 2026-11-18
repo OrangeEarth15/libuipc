@@ -905,8 +905,9 @@ the tabular always query. The tabular is downloaded and `S` chosen again only
 when the tabular buffer pointer, its size or a primitive count changes. That
 suffices because the backend fixes the mask tabular and the contact ids at
 `World::init`: `GlobalContactManager::Impl::_build_contact_tabular` (called
-only from `Impl::init`) is the one writer of the mask, adaptive kappa swaps
-only the coefficient tabular, and geometries created after init stay pending
+only from `Impl::init`) is the one writer of the mask, adaptive kappa and a
+change of `dt` (`_resolve_contact_tabular`) write only the coefficient tabular,
+and geometries created after init stay pending
 (`GlobalVertexManager::Impl::rebuild` is not implemented), so a contact
 tabular edited in the scene after init is ignored by the whole backend. The
 split of the primitives by `S` (a flag kernel, a `DevicePartition` and a
@@ -1150,7 +1151,8 @@ first energy or assembly launch after `SimplexTrajectoryFilter` recorded new
 friction candidates (`friction_candidates_version()`, also bumped when the
 candidates are cleared) or the contact tabular changed
 (`GlobalContactManager::contact_tabular_version()`: the adaptive kappa
-evaluates the contacts with a test tabular, then writes the new kappa).
+evaluates the contacts with a test tabular, then writes the new kappa; a
+change of `dt` resolves the tabular again).
 Every later energy and assembly evaluation of the frame only forms the
 tangential relative displacement from the current positions. The
 `*_friction_lagged` and `*_friction_tan_rel_dx` functions split the old

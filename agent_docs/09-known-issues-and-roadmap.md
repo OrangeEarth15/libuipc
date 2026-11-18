@@ -692,7 +692,9 @@ Verdicts:
   projection); `contact/adaptive/{min,max}_kappa` are fallback-only when
   the corridor is not computable. The evaluation scale is user-configurable
   via `contact/adaptive/kappa_eval_scale` (default 1e-16 — Stiff's value;
-  the /dt^2 conversion keeps it valid for any dt). Measured corridors:
+  the /dt^2 conversion keeps it valid for any dt; a `dt` written after
+  init resolves the corridor and the contact tabular again at the next IPC
+  frame, `GlobalContactManager::update_kappa_corridor`). Measured corridors:
   case 89 → [4.4e7, 4.4e9], case 88 → [4.7e6, 4.7e8]; the established
   κ=1e8 sits inside both, so aligned scenes are behaviorally unchanged.
 - Structural reason libuipc's port is stronger: FEMMASPreconditioner
