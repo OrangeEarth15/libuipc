@@ -1443,8 +1443,16 @@ runs redundantly on every lane (no extra cost), while
   and external articulation, with the first frame's translation for the
   external prismatic joint; `prismatic_jt_h_j_entry` for the prismatic joint
   `F01` maps; `prismatic_e23_hessian_entry` for the q-independent orientation
-  term) and the three triplet blocks (`warp_write_half_block2`, same slots and
-  upper-triangle placement as `half_block<2>().write`) are entry-parallel.
+  term) and the triplet blocks are entry-parallel: `warp_write_half_block2`
+  writes the three blocks of a symmetric two-body Hessian with the slots and
+  upper-triangle placement of `half_block<2>().write`; `warp_write_block2`
+  writes all four blocks of an external articulation joint pair
+  `M_ij g_i g_j^T` as `block<2, 2>().write` does. For two different joints that
+  matrix is not symmetric and its sides are different bodies, so three blocks
+  would lose one of `J^T M J` (exactly when `(a0 - b1)(a1 - b0) >= 0` for the
+  joints' bodies `(a0, a1)` and `(b0, b1)`, e.g. a chain); the ABD subsystem
+  drops the blocks below the diagonal, and the mirrored pair `(j, i)` writes
+  their transposes.
 The result equals the former thread-serial kernels up to rounding (different
 eigensolver and summation order; the projection is 1-Lipschitz in the input):
 the `[warp_spd]` backend tests compare `warp_make_spd` with Eigen on random,

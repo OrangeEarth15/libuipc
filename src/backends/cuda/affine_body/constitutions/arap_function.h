@@ -58,17 +58,30 @@ namespace sym::abd_arap
         }
     }
 
-    // Function to flatten a matrix into a vector
+    // Function to flatten a matrix into a vector laid out like q (and like
+    // the gradient of dEdq): row by row, entry 3 * r + c is entry (r, c)
     template <typename T>
     __host__ __device__ Eigen::Matrix<T, 9, 1> vec(const Eigen::Matrix<T, 3, 3>& mat)
     {
         Eigen::Matrix<T, 9, 1> vector;
-        vector << mat(0, 0), mat(1, 0), mat(2, 0), mat(0, 1), mat(1, 1),
-            mat(2, 1), mat(0, 2), mat(1, 2), mat(2, 2);
+        vector << mat(0, 0), mat(0, 1), mat(0, 2), mat(1, 0), mat(1, 1),
+            mat(1, 2), mat(2, 0), mat(2, 1), mat(2, 2);
         return vector;
     }
 
-    // Function to compute the ARAP Hessian
+    // The twist modes are orthonormal: the Hessian has the eigenvalue 2 six
+    // times and 2 - 4 / (s_a + s_b) on a twist mode, negative for a
+    // compressed body. Capping 4 / (s_a + s_b) at 2 clamps that eigenvalue at
+    // zero, the projection to positive semi-definite in closed form.
+    template <typename T>
+    __host__ __device__ T twist_coefficient(const T& s_a, const T& s_b)
+    {
+        T c = 4 / (s_a + s_b);
+        return c > T(2) ? T(2) : c;
+    }
+
+    // Function to compute the ARAP Hessian with respect to the rows of F,
+    // projected to positive semi-definite
     template <typename T>
     __host__ __device__ void ARAP_Hessian(Eigen::Matrix<T, 9, 9>&       H,
                                           const Eigen::Matrix<T, 3, 3>& F)
@@ -105,9 +118,9 @@ namespace sym::abd_arap
         // Compute the Hessian
         H.setIdentity();
         H *= 2;
-        H -= (4 / (s0 + s1)) * (t0 * t0.transpose());
-        H -= (4 / (s1 + s2)) * (t1 * t1.transpose());
-        H -= (4 / (s0 + s2)) * (t2 * t2.transpose());
+        H -= twist_coefficient(s0, s1) * (t0 * t0.transpose());
+        H -= twist_coefficient(s1, s2) * (t1 * t1.transpose());
+        H -= twist_coefficient(s0, s2) * (t2 * t2.transpose());
     }
     // Function to compute the Hessian of the ARAP energy
     template <typename T>

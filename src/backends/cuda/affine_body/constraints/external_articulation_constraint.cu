@@ -283,7 +283,7 @@ namespace
             cuda_tool::CBufferView<U64>             joint_id_to_uid,
             U64                                     RevoluteUID,
             U64                                     PrismaticUID,
-            SizeT                                   HalfHessianSize,
+            SizeT                                   PairHessianSize,
             int                                     n)
     {
         const int joint_joint_I = blockIdx.x;
@@ -411,8 +411,13 @@ namespace
         Vector2i body_ids_i = joint_id_to_body_ids(ij[0]);
         Vector2i body_ids_j = joint_id_to_body_ids(ij[1]);
 
-        warp_write_half_block2(
-            hessians, joint_joint_I * HalfHessianSize, body_ids_i, body_ids_j, H, lane);
+        // All four blocks of the pair, block (s, t) at (body_ids_i(s),
+        // body_ids_j(t)): for i != j, H is not symmetric and its two sides are
+        // different bodies, so the upper-triangle writer of a symmetric element
+        // Hessian would drop one of them. The ABD subsystem keeps the blocks on
+        // and above the diagonal; the pair (j, i) writes the transposes of the
+        // blocks below it.
+        warp_write_block2(hessians, joint_joint_I * PairHessianSize, body_ids_i, body_ids_j, H, lane);
     }
 
     __global__ void external_articulation_constraint_time_integrator_update_state_kernel(
@@ -525,12 +530,13 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
 {
   public:
     static constexpr U64   ConstraintUID   = 24ull;
-    static constexpr SizeT HalfHessianSize = 2 * (2 + 1) / 2;
+    static constexpr SizeT PairHessianSize = 2 * 2;
 
     using InterAffineBodyConstraint::InterAffineBodyConstraint;
 
     vector<S<geometry::AttributeSlot<Float>>> h_art_joint_joint_mass;
     vector<S<geometry::AttributeSlot<Float>>> h_art_joint_delta_theta_tilde;
+    vector<IndexT>                            h_art_geo_ids;
 
     OffsetCountCollection<IndexT> h_art_id_to_joint_offsets_counts;
     vector<IndexT>                h_joint_id_to_art_id;
@@ -589,6 +595,46 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
     }
 
     U64 get_uid() const noexcept override { return ConstraintUID; }
+
+    // The energy 1/2 r^T M r over the residuals r of the joints has the
+    // gradient J^T (M + M^T) r / 2, while G_theta is J^T M r: the gradient and
+    // the Hessian assembled here are those of the energy only for a
+    // symmetric M. Mirrored entries may differ by rounding, 1e-12 of the
+    // largest entry; an entry that is not a finite number is refused too.
+    static void check_mass(span<const Float> mass, SizeT n, IndexT geo_id)
+    {
+        Float largest = 0;
+        for(Float m : mass)
+        {
+            UIPC_ASSERT_THROW(std::isfinite(m),
+                              "ExternalArticulationConstraint: 'mass' of geometry {} has an entry that is not a finite number: {}",
+                              geo_id,
+                              m);
+            largest = std::max(largest, std::abs(m));
+        }
+        for(SizeT i = 0; i < n; ++i)
+        {
+            for(SizeT j = i; j < n; ++j)
+            {
+                Float m_ij = mass[i * n + j];
+                Float m_ji = mass[j * n + i];
+                Float gap  = std::abs(m_ij - m_ji);
+                UIPC_ASSERT_THROW(gap <= 1e-12 * largest,
+                                  "ExternalArticulationConstraint: 'mass' of geometry {} is not symmetric: "
+                                  "its entries ({}, {}) and ({}, {}) are {} and {}, {} apart "
+                                  "(at most 1e-12 of the largest entry, {}, is taken as rounding)",
+                                  geo_id,
+                                  i,
+                                  j,
+                                  j,
+                                  i,
+                                  m_ij,
+                                  m_ji,
+                                  gap,
+                                  largest);
+            }
+        }
+    }
 
     // Its Hessian is a 12x12 warp eigensolve per joint pair, one of the
     // longest producer chains of the assembly.
@@ -864,6 +910,7 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
                 UIPC_ASSERT(mass, "ExternalArticulationConstraint: 'mass' attribute not found in joint_joint collection");
 
                 auto mass_view = mass->view();
+                check_mass(mass_view, joint_collection->size(), I.geo_info().geo_id);
 
                 h_art_id_to_joint_joint_offsets_counts.counts()[I.index()] =
                     mass->size();
@@ -901,6 +948,7 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
                 // later we will fill them in do_step()
                 h_art_joint_delta_theta_tilde.push_back(delta_theta_tilde);
                 h_art_joint_joint_mass.push_back(mass);
+                h_art_geo_ids.push_back(I.geo_info().geo_id);
             });
 
         // 2. Compute Offsets
@@ -984,9 +1032,12 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
 
         // Update Joint Mass
         h_joint_joint_id_to_mass.clear();
-        for(auto&& mass : h_art_joint_joint_mass)
+        for(SizeT art = 0; art < h_art_joint_joint_mass.size(); ++art)
         {
-            auto mass_view = mass->view();
+            auto mass_view = h_art_joint_joint_mass[art]->view();
+            check_mass(mass_view,
+                       h_art_id_to_joint_offsets_counts.counts()[art],
+                       h_art_geo_ids[art]);
             std::ranges::copy(mass_view, std::back_inserter(h_joint_joint_id_to_mass));
         }
 
@@ -1032,7 +1083,7 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
         if(info.gradient_only())
             return;
 
-        auto h_count = joint_joint_id_to_mass.size() * HalfHessianSize;
+        auto h_count = joint_joint_id_to_mass.size() * PairHessianSize;
         info.hessian_count(h_count);
     }
 
@@ -1132,7 +1183,7 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
                 joint_id_to_uid.cview(),
                 ExternalArticulationConstituion::RevoluteJointConstitutionUID,
                 ExternalArticulationConstituion::PrismaticJointConstitutionUID,
-                HalfHessianSize,
+                PairHessianSize,
                 n_hessian);
         }
     }

@@ -97,5 +97,5 @@ On `joint`:
 
 On `joint_joint`:
 
-- `mass`: entries of $\mathbf{M}^t$ in the kinetic term above
+- `mass`: entries of $\mathbf{M}^t$ in the kinetic term above. $\mathbf{M}^t$ must be symmetric: the gradient of the kinetic term is $\mathbf{J}^T \frac{1}{2}(\mathbf{M}^t + \mathbf{M}^{tT}) (\delta\boldsymbol{\theta} - \tilde{\delta\boldsymbol{\theta}})$, while the constraint assembles $\mathbf{J}^T \mathbf{M}^t (\delta\boldsymbol{\theta} - \tilde{\delta\boldsymbol{\theta}})$ and $\mathbf{J}^T \mathbf{M}^t \mathbf{J}$. A `mass` whose mirrored entries differ by more than $10^{-12}$ of its largest entry, or that is not a number, is refused when the world is initialized and before every frame.
 

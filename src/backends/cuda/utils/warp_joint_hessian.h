@@ -198,4 +198,39 @@ UIPC_DEVICE void warp_write_half_block2(const TripletView& T,
         }
     }
 }
+
+// Warp-cooperative equivalent of
+//   TripletMatrixAssembler{T}.block<2, 2>(I).write(l_indices, r_indices, H)
+// for a 24x24 H in shared memory (column-major): all four blocks, block
+// (ii, jj) at (l_indices(ii), r_indices(jj)) in triplet I + 2 * ii + jj, also
+// where it lies below the diagonal of the global matrix. Every lane of the
+// warp must call it.
+template <typename TripletView>
+UIPC_DEVICE void warp_write_block2(const TripletView& T,
+                                   int                I,
+                                   const Vector2i&    l_indices,
+                                   const Vector2i&    r_indices,
+                                   const Float*       H,
+                                   int                lane)
+{
+    const int2 off = T.submatrix_offset();
+#pragma unroll
+    for(int t = 0; t < 4; ++t)
+    {
+        const int ii = t / 2;
+        const int jj = t % 2;
+        if(lane == 0)
+        {
+            T.row_indices()(I + t) = off.x + l_indices(ii);
+            T.col_indices()(I + t) = off.y + r_indices(jj);
+        }
+        Float* value = T.values()(I + t).data();
+        for(int e = lane; e < 144; e += 32)
+        {
+            const int row = e % 12;
+            const int col = e / 12;
+            value[e]      = H[(12 * ii + row) + 24 * (12 * jj + col)];
+        }
+    }
+}
 }  // namespace uipc::backend::cuda
