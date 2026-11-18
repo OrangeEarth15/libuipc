@@ -1691,6 +1691,11 @@ Graph-stability design (no rebuilds from contact-pair fluctuation):
   attribute (custom C++ partitioning) is respected as-is. Empty-constitution
   geometries are skipped and stay on the internal diagonal fallback. If the
   switch is on but nothing is partitionable, `do_apply` falls back to z=r.
+  A fixed vertex is no unknown of MAS (`set_preconditioner`'s `is_fixed`):
+  its Hessian blocks (the identity `FEMLinearSubsystem` puts on its
+  diagonal) reach no level and the prolongation writes zero to its `z`, so
+  its row stays zero through the PCG and the vertex keeps its position, as
+  under the diagonal preconditioner.
   The python `mesh_partition` export is gone — per-mesh manual tagging no
   longer activates MAS (partial coverage measured net-negative, doc 09).
 - `linear_system/check_interval` is now a registered config key (default 5) —

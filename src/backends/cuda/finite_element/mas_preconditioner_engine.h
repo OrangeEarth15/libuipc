@@ -112,10 +112,15 @@ class MASPreconditionerEngine
     // set_preconditioner(), which then waits for it instead of clearing.
     void prepare_preconditioner();
 
+    // `is_fixed`: per FEM vertex, nonzero for a fixed vertex (empty: none is
+    // fixed). A fixed vertex is no unknown: MAS is built on the free ones, so
+    // its Hessian blocks reach no level and its z is zero (apply() and
+    // fused_pcg_update_apply_dot() take the flags of the last call).
     void set_preconditioner(cuda_tool::CBufferView<Eigen::Matrix3d> triplet_values,
-                            cuda_tool::CBufferView<int> row_ids,
-                            cuda_tool::CBufferView<int> col_ids,
-                            int                         dof_offset);
+                            cuda_tool::CBufferView<int>    row_ids,
+                            cuda_tool::CBufferView<int>    col_ids,
+                            int                            dof_offset,
+                            cuda_tool::CBufferView<IndexT> is_fixed = {});
 
     // ---- Phase 3: Apply preconditioning z = M^{-1} r (per PCG iteration) ----
 
@@ -256,6 +261,9 @@ class MASPreconditionerEngine
     // no level: no Hessian entry, residual or prolongation ever reaches them.
     int  m_level1_begin = 0;
     Int2 m_h_level_size;
+
+    // fixed FEM vertices (set_preconditioner): no unknowns of MAS
+    cuda_tool::CBufferView<IndexT> m_is_fixed;
 
     // ---- GPU buffers: hierarchy ----
     cuda_tool::DeviceBuffer<Int2>         level_sizes;

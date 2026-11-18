@@ -126,8 +126,9 @@ class ABDToleranceChecker final : public NewtonToleranceChecker
             CUDA_TOOL_CHECK(cudaStreamSynchronize(cuda_tool::default_stream()));
         }
 
-        bool h_success = h_success_copy[0];
-        info.converged(h_success);
+        // the member: do_report() prints the verdict from it
+        h_success = h_success_copy[0];
+        info.converged(h_success != 0);
     }
 
     std::string do_report() override

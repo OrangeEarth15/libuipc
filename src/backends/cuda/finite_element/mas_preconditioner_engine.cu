@@ -558,6 +558,7 @@ namespace
         cuda_tool::CBufferView<Eigen::Matrix3d> triplet_values,
         cuda_tool::CBufferView<int>             row_ids,
         cuda_tool::CBufferView<int>             col_ids,
+        cuda_tool::CBufferView<IndexT>          is_fixed,
         int                                     total_nodes,
         int                                     n)
     {
@@ -572,6 +573,11 @@ namespace
         auto H        = triplet_values(I);
 
         if(row_real < 0 || row_real >= total_nodes || col_real < 0 || col_real >= total_nodes)
+            return;
+
+        // A fixed vertex is no unknown: its blocks (the identity on its
+        // diagonal) reach no level.
+        if(is_fixed.size() != 0 && (is_fixed(row_real) || is_fixed(col_real)))
             return;
 
         int vert_col = real_to_part(col_real);
@@ -1249,6 +1255,7 @@ namespace
         cuda_tool::CBufferView<LevelTable> coarse_table,
         cuda_tool::CBufferView<int>        real_to_part,
         cuda_tool::CBufferView<Matrix3x3>  unpart_diag_inv,
+        cuda_tool::CBufferView<IndexT>     is_fixed,
         cuda_tool::CDense<IndexT>          converged,
         int                                level_num,
         int                                n)
@@ -1270,6 +1277,13 @@ namespace
             if(unpart_diag_inv.size() != 0)
                 Z_view.segment<3>(idx * 3).as_eigen() =
                     unpart_diag_inv(idx) * R_view.segment<3>(idx * 3).as_eigen();
+            return;
+        }
+
+        // A fixed vertex is no unknown: no coarse correction reaches it
+        if(is_fixed.size() != 0 && is_fixed(idx))
+        {
+            Z_view.segment<3>(3 * idx).as_eigen().setZero();
             return;
         }
 
@@ -1312,6 +1326,7 @@ namespace
         cuda_tool::CBufferView<LevelTable> coarse_table,
         cuda_tool::CBufferView<int>        real_to_part,
         cuda_tool::CBufferView<Matrix3x3>  unpart_diag_inv,
+        cuda_tool::CBufferView<IndexT>     is_fixed,
         cuda_tool::Dense<Float>            rz_new,
         cuda_tool::CDense<IndexT>          converged,
         int                                level_num,
@@ -1330,6 +1345,9 @@ namespace
         const bool   in_range = idx < n;
         const IndexT conv     = *converged;
         const int    rdx      = in_range ? real_to_part(idx) : -1;
+        // a fixed vertex is no unknown: no coarse correction reaches it, and
+        // its r (zero) and z add nothing to r^T z
+        const bool fixed = in_range && is_fixed.size() != 0 && is_fixed(idx);
         if(in_range && conv == 0)
         {
             if(rdx < 0 && unpart_diag_inv.size() != 0)
@@ -1369,6 +1387,10 @@ namespace
                 z(1)   = z_new(1);
                 z(2)   = z_new(2);
                 dot = r_new(0) * z_new(0) + r_new(1) * z_new(1) + r_new(2) * z_new(2);
+            }
+            else if(rdx >= 0 && fixed)
+            {
+                Z_view.segment<3>(3 * idx).as_eigen().setZero();
             }
             else if(rdx >= 0)
             {
@@ -1776,8 +1798,15 @@ void MASPreconditionerEngine::prepare_preconditioner()
 void MASPreconditionerEngine::set_preconditioner(cuda_tool::CBufferView<Eigen::Matrix3d> triplet_values,
                                                  cuda_tool::CBufferView<int> row_ids,
                                                  cuda_tool::CBufferView<int> col_ids,
-                                                 int dof_offset)
+                                                 int dof_offset,
+                                                 cuda_tool::CBufferView<IndexT> is_fixed)
 {
+    UIPC_ASSERT(is_fixed.size() == 0 || is_fixed.size() == (SizeT)m_total_nodes,
+                "MAS has {} fixed flags for {} vertices",
+                is_fixed.size(),
+                m_total_nodes);
+    m_is_fixed = is_fixed;
+
     // The partition adjacency and its multi-level hierarchy are invariant for the
     // lifetime of this engine. init_matrix() builds them once; rebuilding here
     // would repeat scans, kernel launches, and host synchronizations every Newton
@@ -1848,6 +1877,7 @@ void MASPreconditionerEngine::scatter_hessian_to_clusters(
             triplet_values,
             row_ids,
             col_ids,
+            m_is_fixed,
             m_total_nodes,
             triplet_num);
     }
@@ -2023,6 +2053,7 @@ void MASPreconditionerEngine::collect_final_Z(cuda_tool::DenseVectorView<Float> 
         coarse_tables.cview(),
         real_to_part.cview(),
         unpart_diag_inv,
+        m_is_fixed,
         converged.cviewer(),
         level_num,
         N);
@@ -2152,6 +2183,7 @@ void MASPreconditionerEngine::fused_pcg_update_apply_dot(
         coarse_tables.cview(),
         real_to_part.cview(),
         unpart_diag_inv,
+        m_is_fixed,
         rz_new.viewer(),
         converged.cviewer(),
         level_num,

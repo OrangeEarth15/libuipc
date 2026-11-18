@@ -417,8 +417,13 @@ class FEMMASPreconditioner : public LocalPreconditioner
         auto A          = info.A();
         int  dof_offset = static_cast<int>(info.dof_offset());
 
-        // MAS assembly for partitioned vertices
-        engine.set_preconditioner(A.values(), A.row_indices(), A.col_indices(), dof_offset / 3);
+        // MAS assembly for partitioned vertices; the fixed vertices are no
+        // unknowns of it (FEMLinearSubsystem keeps their rows at zero)
+        engine.set_preconditioner(A.values(),
+                                  A.row_indices(),
+                                  A.col_indices(),
+                                  dof_offset / 3,
+                                  finite_element_method->is_fixed());
 
         auto dump_mas = world().scene().config().find<IndexT>("extras/debug/dump_mas_matrices");
         if(dump_mas && dump_mas->view()[0] != 0)
