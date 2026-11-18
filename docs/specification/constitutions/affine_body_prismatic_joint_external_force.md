@@ -6,19 +6,19 @@ The **Affine Body Prismatic Joint External Force** applies a scalar external for
 
 ## Force Application
 
-Given a scalar force $f$ and the per-body joint tangent $\hat{\mathbf{t}}_k$, the external force enters as a translational generalized force on each body's affine origin DOF:
+Given a scalar force $f$ and the per-body joint tangent $\hat{\mathbf{t}}_k$, the force $f \, \hat{\mathbf{t}}_k$ acts on body $k$ at the joint's anchor $\mathbf{c}_k = \mathbf{J}(\bar{\mathbf{c}}_k) \, \mathbf{q}_k$, the point of the base joint's axis fixed in that body ($\bar{\mathbf{c}}_k$ its rest local coordinates, see [Prismatic Joint](./affine_body_prismatic_joint.md)). Its generalized force is
 
 $$
-\mathbf{F}_k = \begin{bmatrix} +f \, \hat{\mathbf{t}}_k \\ \mathbf{0}_9 \end{bmatrix} \in \mathbb{R}^{12}, \quad k \in \{i, j\},
+\mathbf{F}_k = \mathbf{J}(\bar{\mathbf{c}}_k)^T f \, \hat{\mathbf{t}}_k = \begin{bmatrix} f \, \hat{\mathbf{t}}_k \\ f \, \hat{t}_{k,x} \, \bar{\mathbf{c}}_k \\ f \, \hat{t}_{k,y} \, \bar{\mathbf{c}}_k \\ f \, \hat{t}_{k,z} \, \bar{\mathbf{c}}_k \end{bmatrix} \in \mathbb{R}^{12}, \quad k \in \{i, j\},
 $$
 
 where:
 
 - $f$ is the scalar force magnitude (per edge)
 - $\hat{\mathbf{t}}_k$ is the joint tangent direction on body $k$ in world space (see [Tangent Direction](#tangent-direction))
-- $\mathbf{0}_9$ is the nine-dimensional zero vector (no rotational generalized force)
+- $\mathbf{J}(\bar{\mathbf{x}})$ is the Jacobian of the [Affine Body](./affine_body.md) at the rest local point $\bar{\mathbf{x}}$, so the last nine entries act on the rows of $\mathbf{A}_k$
 
-The same $+f$ is applied to both bodies; Newton's third law is encoded by the strict antisymmetry $\hat{\mathbf{t}}_i = -\hat{\mathbf{t}}_j$ that is enforced numerically in § [Tangent Direction](#tangent-direction).
+The same $+f$ is applied to both bodies; Newton's third law is encoded by the strict antisymmetry $\hat{\mathbf{t}}_i = -\hat{\mathbf{t}}_j$ that is enforced numerically in § [Tangent Direction](#tangent-direction). While the joint holds, both anchors lie on its axis, so the two forces have one line of action: the force changes neither the linear nor the angular momentum of the pair, and the motion does not depend on where each mesh has its origin.
 
 ### Tangent Direction
 
@@ -65,7 +65,7 @@ The force can be updated at each frame through the Animator system:
 
 ## Requirement
 
-This constitution must be applied to a geometry that already has an [AffineBodyPrismaticJoint](./affine_body_prismatic_joint.md) (UID=20) constitution.
+This constitution must be applied to a geometry that already has an [AffineBodyPrismaticJoint](./affine_body_prismatic_joint.md) (UID=20) constitution. It may be applied to some of the joint geometries only: the force of an edge acts on the joint of that edge.
 
 ## Attributes
 

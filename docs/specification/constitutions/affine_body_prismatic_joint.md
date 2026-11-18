@@ -101,9 +101,9 @@ On the joint geometry (1D simplicial complex), on **edges** (one edge per joint)
 - `l_geo_id` (`IndexT`): scene geometry slot id for the left body $i$
 - `r_geo_id` (`IndexT`): scene geometry slot id for the right body $j$
 - `l_inst_id` (`IndexT`): instance index within the left geometry
-- `r_inst_id` (`IndexT`): instance index within the right geometry
+- `r_inst_id` (`IndexT`): instance index within the right geometry; the right body must be another body than the left one: a joint between a body and itself is refused when the world is initialized
 - `strength_ratio`: $\gamma$ in $K = \gamma(m_i + m_j)$ above
 - `distance` (`Float`): $d_{\text{current}}$, current signed displacement along the joint axis. Written by the backend every time step (read-only for the user).
 - `init_distance` (`Float`): $d_0$, user-facing offset **added to** the extracted geometric displacement $d(\mathbf{q})$ to form $d_{\text{current}}$. Default `0.0`.
 
-When the joint is created via Local `create_geometry`, optional **edge** attributes (each `Vector3`) supply local joint geometry: `l_position0`, `l_position1` (left body local frame), `r_position0`, `r_position1` (right body local frame).
+When the joint is created via Local `create_geometry`, optional **edge** attributes (each `Vector3`) supply local joint geometry: `l_position0`, `l_position1` (left body local frame), `r_position0`, `r_position1` (right body local frame). `l_position0` and `l_position1` give the axis and must differ, as the two end points of an edge must; equal ones are refused when the world is initialized. An [ExternalArticulationConstraint](./external_articulation_constraint.md) over the joint also reads the right-hand axis from `r_position0` and `r_position1`, which must then differ as well.

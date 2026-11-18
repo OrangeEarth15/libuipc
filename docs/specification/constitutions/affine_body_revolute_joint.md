@@ -93,7 +93,7 @@ On the joint geometry (1D simplicial complex), on **edges** (one edge per joint)
 - `l_geo_id` (`IndexT`): scene geometry slot id for the left body $i$
 - `r_geo_id` (`IndexT`): scene geometry slot id for the right body $j$
 - `l_inst_id` (`IndexT`): instance index within the left geometry
-- `r_inst_id` (`IndexT`): instance index within the right geometry
+- `r_inst_id` (`IndexT`): instance index within the right geometry; the right body must be another body than the left one: a joint between a body and itself is refused when the world is initialized
 - `strength_ratio`: $\gamma$ in $K = \gamma(m_i + m_j)$ above
 - `angle` (`Float`): $\theta_{\text{current}}$, current relative joint angle in radians. A continuous, unbounded, multi-turn absolute angle (not wrapped to $(-\pi, \pi]$) — see [State Update](#state-update). Written by the backend every time step (read-only for the user).
 - `init_angle` (`Float`): $\alpha_0$, initial angle offset added to the extracted relative angle. Default `0.0`.

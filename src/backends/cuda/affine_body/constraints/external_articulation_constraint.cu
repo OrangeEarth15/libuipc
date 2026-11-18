@@ -737,6 +737,7 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
     void build_joint_info(span<S<geometry::GeometrySlot>>        geo_slots,
                           InterAffineBodyAnimator::FilteredInfo& info,
                           const geometry::Geometry&              mesh,
+                          IndexT                                 geo_id,
                           IndexT                                 index)
     {
         auto joint_mesh = mesh.as<geometry::SimplicialComplex>();
@@ -824,10 +825,19 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
                      * (l_pos1_attr->view()[index] - l_pos0_attr->view()[index]))
                         .normalized();
                 Vector3 l_c = LT * l_pos0_attr->view()[index];
-                Vector3 r_t =
-                    (RT.rotation()
-                     * (r_pos1_attr->view()[index] - r_pos0_attr->view()[index]))
-                        .normalized();
+                // The joint checks its edge and its left-hand end points; only
+                // the articulation reads r_position1. Equal right-hand end
+                // points give no axis (normalized() would leave the zero
+                // vector, and delta_theta would be half the displacement).
+                Vector3 r_axis =
+                    RT.rotation()
+                    * (r_pos1_attr->view()[index] - r_pos0_attr->view()[index]);
+                UIPC_ASSERT_THROW(r_axis.squaredNorm() > 0,
+                                  "ExternalArticulationConstraint: Edge positions must not be too close: "
+                                  "r_position0 and r_position1 of joint {} of prismatic joint geometry {} give no axis",
+                                  index,
+                                  geo_id);
+                Vector3 r_t           = r_axis.normalized();
                 Vector3 r_c           = RT * r_pos0_attr->view()[index];
                 L_basis.segment<3>(0) = LT.inverse() * l_c;
                 L_basis.segment<3>(3) = LT.rotation().inverse() * l_t;
@@ -924,7 +934,7 @@ class ExternalArticulationConstraint final : public InterAffineBodyConstraint
                     h_joint_id_to_art_id.push_back(I.index());
                     h_joint_id_to_delta_theta_tilde.push_back(delta_theta_tilde);
 
-                    build_joint_info(geo_slots, info, geo_slot->geometry(), index);
+                    build_joint_info(geo_slots, info, geo_slot->geometry(), geo_id, index);
                 }
 
                 for(auto&& m : mass_view)

@@ -76,7 +76,7 @@ The torque can be updated at each frame through the Animator system:
 
 ## Requirement
 
-This constitution must be applied to a geometry that already has an [AffineBodyRevoluteJoint](./affine_body_revolute_joint.md) (UID=18) constitution.
+This constitution must be applied to a geometry that already has an [AffineBodyRevoluteJoint](./affine_body_revolute_joint.md) (UID=18) constitution. It may be applied to some of the joint geometries only: the torque of an edge acts on the joint of that edge.
 
 ## Attributes
 

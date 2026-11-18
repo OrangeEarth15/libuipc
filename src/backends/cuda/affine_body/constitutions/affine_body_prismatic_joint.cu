@@ -496,8 +496,10 @@ namespace
 
     __global__ void affine_body_prismatic_joint_external_force_step_kernel(
         cuda_tool::BufferView<Vector12>  external_forces,
+        cuda_tool::CBufferView<IndexT>   joint_ids,
         cuda_tool::CBufferView<Vector2i> body_ids,
         cuda_tool::CBufferView<Float>    forces,
+        cuda_tool::CBufferView<Vector6>  rest_cs,
         cuda_tool::CBufferView<Vector6>  rest_tangents,
         cuda_tool::CBufferView<IndexT>   constrained_flags,
         cuda_tool::CBufferView<Vector12> qs,
@@ -509,10 +511,13 @@ namespace
         if(constrained_flags(i) == 0)
             return;
 
-        Vector2i bids = body_ids(i);
-        Float    f    = forces(i);
+        // the joint that carries force i
+        IndexT   joint = joint_ids(i);
+        Vector2i bids  = body_ids(joint);
+        Float    f     = forces(i);
 
-        const Vector6& t_bar = rest_tangents(i);
+        const Vector6& c_bar = rest_cs(joint);
+        const Vector6& t_bar = rest_tangents(joint);
 
         Vector12 q_i = qs(bids(0));
         Vector12 q_j = qs(bids(1));
@@ -526,12 +531,13 @@ namespace
         t_j = 0.5 * (t_i + t_j);
         t_i = -t_j;
 
-        // Build 12D force vectors: -f*t to body_i, +f*t to body_j
-        Vector12 F_i      = Vector12::Zero();
-        F_i.segment<3>(0) = f * t_i;
-
-        Vector12 F_j      = Vector12::Zero();
-        F_j.segment<3>(0) = f * t_j;
+        // -f*t on body_i and +f*t on body_j, each at the joint's anchor on
+        // that body, c = p + A * c_bar: F = J(c_bar)^T f t. While the joint
+        // holds, both anchors lie on its axis: the two forces have one line
+        // of action and exert no torque on the pair.
+        ABDJacobi J[2] = {ABDJacobi{c_bar.segment<3>(0)}, ABDJacobi{c_bar.segment<3>(3)}};
+        Vector12 F_i = J[0].T() * Vector3{f * t_i};
+        Vector12 F_j = J[1].T() * Vector3{f * t_j};
 
         eigen::atomic_add(external_forces(bids(0)), F_i);
         eigen::atomic_add(external_forces(bids(1)), F_j);
@@ -733,6 +739,9 @@ class AffineBodyPrismaticJoint final : public InterAffineBodyConstitution
     vector<Float>                 h_init_distances;
     vector<Float>                 h_current_distances;
 
+    // joint geometry id -> index of its first joint in the lists above
+    unordered_map<IndexT, IndexT> h_geo_id_to_joint_offset;
+
     cuda_tool::DeviceBuffer<Float> init_distances;
     cuda_tool::DeviceBuffer<Float> current_distances;
 
@@ -761,10 +770,11 @@ class AffineBodyPrismaticJoint final : public InterAffineBodyConstitution
         list<Float>    strength_ratio_list;
         list<Float>    init_distances_list;
 
-        IndexT geo_index = 0;
+        IndexT         geo_index = 0;
+        vector<IndexT> joint_geo_ids;
         info.for_each(
             geo_slots,
-            [&](geometry::Geometry& geo)
+            [&](const InterAffineBodyConstitutionManager::ForEachInfo& I, geometry::Geometry& geo)
             {
                 auto uid = geo.meta().find<U64>(builtin::constitution_uid);
                 U64  uid_value = uid->view()[0];
@@ -774,6 +784,7 @@ class AffineBodyPrismaticJoint final : public InterAffineBodyConstitution
                 auto sc = geo.as<geometry::SimplicialComplex>();
 
                 h_geo_joint_offsets_counts.counts()[geo_index] = sc->edges().size();
+                joint_geo_ids.push_back(I.geo_info().geo_id);
 
                 auto l_geo_id = sc->edges().find<IndexT>("l_geo_id");
                 UIPC_ASSERT(l_geo_id, "AffineBodyPrismaticJoint: Geometry must have 'l_geo_id' attribute on `edges`");
@@ -818,6 +829,16 @@ class AffineBodyPrismaticJoint final : public InterAffineBodyConstitution
 
                     Vector2i body_ids = {info.body_id(l_gid, l_iid),
                                          info.body_id(r_gid, r_iid)};
+                    // A joint between a body and itself has no energy (its sides
+                    // move together); its assembly would put its cross block on
+                    // the body's diagonal block once, without the transpose.
+                    UIPC_ASSERT_THROW(body_ids[0] != body_ids[1],
+                                      "AffineBodyPrismaticJoint: Joint {} of geometry {} links geometry {} instance {} to itself, "
+                                      "a joint needs two different bodies",
+                                      i,
+                                      I.geo_info().geo_id,
+                                      l_gid,
+                                      l_iid);
                     body_ids_list.push_back(body_ids);
 
                     auto left_sc  = info.body_geo(geo_slots, l_gid);
@@ -845,7 +866,14 @@ class AffineBodyPrismaticJoint final : public InterAffineBodyConstitution
                     {
                         Vector3 lp0 = LT * l_pos0_attr->view()[i];
                         Vector3 lp1 = LT * l_pos1_attr->view()[i];
-                        t           = (lp1 - lp0).normalized();
+                        // as for an edge: equal end points give no axis, and
+                        // normalized() would leave the zero vector
+                        UIPC_ASSERT_THROW((lp0 - lp1).squaredNorm() > 0,
+                                          "AffineBodyPrismaticJoint: Edge positions must not be too close: "
+                                          "l_position0 and l_position1 of joint {} of geometry {} give no axis",
+                                          i,
+                                          I.geo_info().geo_id);
+                        t = (lp1 - lp0).normalized();
                         rest_position_c.segment<3>(0) = l_pos0_attr->view()[i];
                         rest_position_c.segment<3>(3) = r_pos0_attr->view()[i];
                     }
@@ -892,6 +920,8 @@ class AffineBodyPrismaticJoint final : public InterAffineBodyConstitution
             });
 
         h_geo_joint_offsets_counts.scan();
+        for(auto&& [g, geo_id] : enumerate(joint_geo_ids))
+            h_geo_id_to_joint_offset[geo_id] = h_geo_joint_offsets_counts.offsets()[g];
 
         h_body_ids.resize(body_ids_list.size());
         std::ranges::move(body_ids_list, h_body_ids.begin());
@@ -1418,9 +1448,12 @@ class AffineBodyPrismaticJointExternalForceConstraint final : public InterAffine
 
     vector<Float>  h_forces;
     vector<IndexT> h_is_constrained;
+    // force i acts on joint h_joint_ids[i] of AffineBodyPrismaticJoint
+    vector<IndexT> h_joint_ids;
 
     cuda_tool::DeviceBuffer<Float>  forces;
     cuda_tool::DeviceBuffer<IndexT> is_constrained;
+    cuda_tool::DeviceBuffer<IndexT> joint_ids;
 
     void do_build(BuildInfo& info) override
     {
@@ -1449,10 +1482,21 @@ class AffineBodyPrismaticJointExternalForceConstraint final : public InterAffine
                 UIPC_ASSERT(external_force, "AffineBodyPrismaticJointExternalForceConstraint: Geometry must have 'external_force' attribute on `edges`");
                 auto external_force_view = external_force->view();
 
+                // the force of an edge acts on the joint of that edge, also
+                // where other joint geometries carry no force
+                auto geo_id = I.geo_info().geo_id;
+                auto joint_offset = prismatic_joint->h_geo_id_to_joint_offset.find(geo_id);
+                UIPC_ASSERT_THROW(
+                    joint_offset != prismatic_joint->h_geo_id_to_joint_offset.end(),
+                    "AffineBodyPrismaticJointExternalForceConstraint: Geometry {} carries no AffineBodyPrismaticJoint (UID={})",
+                    geo_id,
+                    AffineBodyPrismaticJoint::ConstitutionUID);
+
                 for(SizeT i = 0; i < sc->edges().size(); ++i)
                 {
                     h_is_constrained.push_back(is_constrained_view[i]);
                     h_forces.push_back(external_force_view[i]);
+                    h_joint_ids.push_back(joint_offset->second + i);
                 }
             });
 
@@ -1461,6 +1505,7 @@ class AffineBodyPrismaticJointExternalForceConstraint final : public InterAffine
         {
             forces.copy_from(h_forces);
             is_constrained.copy_from(h_is_constrained);
+            joint_ids.copy_from(h_joint_ids);
         }
     }
 
@@ -1554,8 +1599,10 @@ class AffineBodyPrismaticJointExternalForce final : public AffineBodyExternalFor
         int  n = (int)force_count;
         k<<<cuda_tool::best_grid_dim(n, k), cuda_tool::best_block_dim(k), 0, nullptr>>>(
             info.external_forces(),
+            constraint->joint_ids.cview(),
             constraint->prismatic_joint->body_ids.cview(),
             constraint->forces.cview(),
+            constraint->prismatic_joint->rest_cs.cview(),
             constraint->prismatic_joint->rest_ts.cview(),
             constraint->is_constrained.cview(),
             abd->qs(),

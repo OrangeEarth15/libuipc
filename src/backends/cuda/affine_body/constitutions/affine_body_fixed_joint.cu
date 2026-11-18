@@ -259,7 +259,7 @@ class AffineBodyFixedJoint final : public InterAffineBodyConstitution
 
         info.for_each(
             geo_slots,
-            [&](geometry::Geometry& geo)
+            [&](const InterAffineBodyConstitutionManager::ForEachInfo& I, geometry::Geometry& geo)
             {
                 auto sc = geo.as<geometry::SimplicialComplex>();
 
@@ -287,8 +287,19 @@ class AffineBodyFixedJoint final : public InterAffineBodyConstitution
                     IndexT l_iid = l_inst_id_view[i];
                     IndexT r_iid = r_inst_id_view[i];
 
-                    body_ids_list.push_back({info.body_id(l_gid, l_iid),
-                                             info.body_id(r_gid, r_iid)});
+                    Vector2i body_ids = {info.body_id(l_gid, l_iid),
+                                         info.body_id(r_gid, r_iid)};
+                    // A joint between a body and itself has no energy (its sides
+                    // move together); its assembly would put its cross block on
+                    // the body's diagonal block once, without the transpose.
+                    UIPC_ASSERT_THROW(body_ids[0] != body_ids[1],
+                                      "AffineBodyFixedJoint: Joint {} of geometry {} links geometry {} instance {} to itself, "
+                                      "a joint needs two different bodies",
+                                      i,
+                                      I.geo_info().geo_id,
+                                      l_gid,
+                                      l_iid);
+                    body_ids_list.push_back(body_ids);
 
                     Transform LT{info.body_geo(geo_slots, l_gid)->transforms().view()[l_iid]};
                     Transform RT{info.body_geo(geo_slots, r_gid)->transforms().view()[r_iid]};

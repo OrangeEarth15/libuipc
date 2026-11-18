@@ -81,7 +81,7 @@ On each **vertex**:
 - `l_geo_id` (`IndexT`): scene geometry slot id for the left body $i$
 - `r_geo_id` (`IndexT`): scene geometry slot id for the right body $j$
 - `l_inst_id` (`IndexT`): instance index within the left geometry
-- `r_inst_id` (`IndexT`): instance index within the right geometry
+- `r_inst_id` (`IndexT`): instance index within the right geometry; the right body must be another body than the left one: a joint between a body and itself is refused when the world is initialized
 - `strength_ratio`: $\gamma$ in $K = \gamma(m_i + m_j)$
 
 When the joint is created via Local `create_geometry`, optional **vertex** attributes (each `Vector3`): `l_position` (left body's local frame) and `r_position` (right body's local frame).

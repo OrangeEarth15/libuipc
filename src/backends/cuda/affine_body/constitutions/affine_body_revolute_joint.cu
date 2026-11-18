@@ -441,6 +441,7 @@ namespace
 
     __global__ void affine_body_revolute_joint_external_force_step_kernel(
         cuda_tool::BufferView<Vector12>  external_forces,
+        cuda_tool::CBufferView<IndexT>   joint_ids,
         cuda_tool::CBufferView<Vector2i> body_ids,
         cuda_tool::CBufferView<Float>    torques,
         cuda_tool::CBufferView<Vector12> rest_positions,
@@ -454,10 +455,12 @@ namespace
         if(constrained_flags(i) == 0)
             return;
 
-        Vector2i bids = body_ids(i);
-        Float    tau  = torques(i);
+        // the joint that carries torque i
+        IndexT   joint = joint_ids(i);
+        Vector2i bids  = body_ids(joint);
+        Float    tau   = torques(i);
 
-        const Vector12& X_bar = rest_positions(i);
+        const Vector12& X_bar = rest_positions(joint);
 
         Vector12 q_i = qs(bids(0));
         Vector12 q_j = qs(bids(1));
@@ -698,6 +701,8 @@ class AffineBodyRevoluteJoint final : public InterAffineBodyConstitution
 
     // Angle tracking (for all revolute joints)
     OffsetCountCollection<IndexT> h_geo_joint_offsets_counts;
+    // joint geometry id -> index of its first joint in the lists of joints
+    unordered_map<IndexT, IndexT> h_geo_id_to_joint_offset;
     vector<Vector6>               h_l_basis;  // [n_L, b_L] per joint
     vector<Vector6>               h_r_basis;  // [n_R, b_R] per joint
     vector<Float>                 h_init_angles;
@@ -740,7 +745,8 @@ class AffineBodyRevoluteJoint final : public InterAffineBodyConstitution
         list<Vector6>  r_basis_list;
         list<Float>    init_angles_list;
 
-        IndexT geo_index = 0;
+        IndexT         geo_index = 0;
+        vector<IndexT> joint_geo_ids;
         info.for_each(
             geo_slots,
             [&](const InterAffineBodyConstitutionManager::ForEachInfo& I, geometry::Geometry& geo)
@@ -751,6 +757,7 @@ class AffineBodyRevoluteJoint final : public InterAffineBodyConstitution
                             "AffineBodyRevoluteJoint: Geometry constitution UID mismatch");
 
                 auto joint_geo_id = I.geo_info().geo_id;
+                joint_geo_ids.push_back(joint_geo_id);
 
                 auto sc = geo.as<geometry::SimplicialComplex>();
                 UIPC_ASSERT(sc, "AffineBodyRevoluteJoint: Geometry must be a simplicial complex");
@@ -799,6 +806,16 @@ class AffineBodyRevoluteJoint final : public InterAffineBodyConstitution
 
                     Vector2i body_ids = {info.body_id(l_gid, l_iid),
                                          info.body_id(r_gid, r_iid)};
+                    // A joint between a body and itself has no energy (its sides
+                    // move together); its assembly would put its cross block on
+                    // the body's diagonal block once, without the transpose.
+                    UIPC_ASSERT_THROW(body_ids[0] != body_ids[1],
+                                      "AffineBodyRevoluteJoint: Joint {} of geometry {} links geometry {} instance {} to itself, "
+                                      "a joint needs two different bodies",
+                                      i,
+                                      joint_geo_id,
+                                      l_gid,
+                                      l_iid);
                     body_ids_list.push_back(body_ids);
 
                     auto left_sc  = info.body_geo(geo_slots, l_gid);
@@ -885,6 +902,8 @@ Edge             = ({}, {}))",
             });
 
         h_geo_joint_offsets_counts.scan();
+        for(auto&& [g, geo_id] : enumerate(joint_geo_ids))
+            h_geo_id_to_joint_offset[geo_id] = h_geo_joint_offsets_counts.offsets()[g];
 
         h_body_ids.resize(body_ids_list.size());
         std::ranges::move(body_ids_list, h_body_ids.begin());
@@ -1460,9 +1479,12 @@ class AffineBodyRevoluteJointExternalForceConstraint final : public InterAffineB
 
     vector<Float>  h_torques;
     vector<IndexT> h_is_constrained;
+    // torque i acts on joint h_joint_ids[i] of AffineBodyRevoluteJoint
+    vector<IndexT> h_joint_ids;
 
     cuda_tool::DeviceBuffer<Float>  torques;
     cuda_tool::DeviceBuffer<IndexT> is_constrained;
+    cuda_tool::DeviceBuffer<IndexT> joint_ids;
 
     void do_build(BuildInfo& info) override
     {
@@ -1491,10 +1513,21 @@ class AffineBodyRevoluteJointExternalForceConstraint final : public InterAffineB
                 UIPC_ASSERT(external_torque, "AffineBodyRevoluteJointExternalForceConstraint: Geometry must have 'external_torque' attribute on `edges`");
                 auto external_torque_view = external_torque->view();
 
+                // the torque of an edge acts on the joint of that edge, also
+                // where other joint geometries carry no torque
+                auto geo_id = I.geo_info().geo_id;
+                auto joint_offset = revolute_joint->h_geo_id_to_joint_offset.find(geo_id);
+                UIPC_ASSERT_THROW(
+                    joint_offset != revolute_joint->h_geo_id_to_joint_offset.end(),
+                    "AffineBodyRevoluteJointExternalForceConstraint: Geometry {} carries no AffineBodyRevoluteJoint (UID={})",
+                    geo_id,
+                    AffineBodyRevoluteJoint::ConstitutionUID);
+
                 for(SizeT i = 0; i < sc->edges().size(); ++i)
                 {
                     h_is_constrained.push_back(is_constrained_view[i]);
                     h_torques.push_back(external_torque_view[i]);
+                    h_joint_ids.push_back(joint_offset->second + i);
                 }
             });
 
@@ -1503,6 +1536,7 @@ class AffineBodyRevoluteJointExternalForceConstraint final : public InterAffineB
         {
             torques.copy_from(h_torques);
             is_constrained.copy_from(h_is_constrained);
+            joint_ids.copy_from(h_joint_ids);
         }
     }
 
@@ -1596,6 +1630,7 @@ class AffineBodyRevoluteJointExternalForce final : public AffineBodyExternalForc
         int  n = (int)torque_count;
         k<<<cuda_tool::best_grid_dim(n, k), cuda_tool::best_block_dim(k), 0, nullptr>>>(
             info.external_forces(),
+            constraint->joint_ids.cview(),
             constraint->revolute_joint->body_ids.cview(),
             constraint->torques.cview(),
             constraint->revolute_joint->rest_positions.cview(),
