@@ -476,9 +476,11 @@ several closed components. The importer removes isolated zero-volume components
 and fills open boundaries before final rigid validation. Roll back newly created
 Blender data and restore existing cache visibility if attachment fails.
 
-The native ABD vertex reporter inherits zero thickness and dimension 3 from the
-global vertex manager; cloth/FEM thickness offsets do not add a separate skin to
-ABD surfaces. The robot addition preserves that backend behavior.
+The native ABD vertex reporter passes a geometry's `thickness` vertex attribute
+to contact, as the FEM reporter does (zero without the attribute), and inherits
+dimension 3 from the global vertex manager. The add-on writes the material's
+thickness radius on rigid meshes too, so a rigid surface keeps that distance in
+contact (robot links use 0.1 mm).
 
 The initial three-finger dining delivery used an unconstrained apple and 17 driven links.
 All 500 cached frames passed enabled inter-object crossing checks; the hand

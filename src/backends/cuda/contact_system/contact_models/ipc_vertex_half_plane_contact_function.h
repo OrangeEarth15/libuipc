@@ -83,8 +83,10 @@ namespace sym::ipc_vertex_half_contact
     {
         using namespace codim_ipc_contact;
 
+        // the trial axis must not be parallel to N, in either direction:
+        // trial x N vanishes for N = -x as it does for N = x
         Vector3 trial = Vector3::UnitX();
-        if(N.dot(trial) > 0.9)
+        if(abs(N.dot(trial)) > 0.9)
         {
             trial = Vector3::UnitZ();
             e1    = trial.cross(N).normalized();
@@ -167,12 +169,12 @@ namespace sym::ipc_vertex_half_contact
         H = J.transpose() * H2x2 * J;
     }
 
-    inline __device__ void PH_friction_gradient(Vector3&   G,
-                                                Float      kappa,
-                                                Float      d_hat,
-                                                Float      thickness,
-                                                Float      mu,
-                                                Float      eps_vh,
+    inline __device__ void PH_friction_gradient(Vector3&       G,
+                                                Float          kappa,
+                                                Float          d_hat,
+                                                Float          thickness,
+                                                Float          mu,
+                                                Float          eps_vh,
                                                 const Vector3& prev_v,
                                                 const Vector3& v,
                                                 const Vector3& P,

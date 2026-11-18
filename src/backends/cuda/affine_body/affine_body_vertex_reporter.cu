@@ -174,6 +174,7 @@ void AffineBodyVertexReporter::Impl::init_attributes(VertexAttributeInfo& info)
     async_copy(span{abd().h_vertex_id_to_subscene_contact_element_id},
                info.subscene_element_ids());
     async_copy(span{abd().h_vertex_id_to_d_hat}, info.d_hats());
+    async_copy(span{abd().h_vertex_id_to_thickness}, info.thicknesses());
 }
 
 void AffineBodyVertexReporter::Impl::update_attributes(VertexAttributeInfo& info)

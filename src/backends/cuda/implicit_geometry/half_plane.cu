@@ -77,7 +77,9 @@ void HalfPlane::Impl::_build_geometry()
         },
         [&](const Vector3& normals, const Vector3& positions)
         {
-            h_normals.push_back(normals);
+            // a plane is the same for every length of its normal; a zero
+            // normal has no direction and stays zero (Eigen's normalized())
+            h_normals.push_back(normals.normalized());
             h_positions.push_back(positions);
         });
 

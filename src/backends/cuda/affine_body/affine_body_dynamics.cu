@@ -384,16 +384,19 @@ void AffineBodyDynamics::Impl::_build_geometry_on_host(WorldVisitor& world)
     // - `vertex_id_to_body_id`
     // - `vertex_id_to_contact_element_id`
     // - `vertex_id_to_d_hat`
+    // - `vertex_id_to_thickness`
     {
         h_vertex_id_to_body_id.resize(abd_vertex_count);
         h_vertex_id_to_contact_element_id.resize(abd_vertex_count);
         h_vertex_id_to_subscene_contact_element_id.resize(abd_vertex_count);
         h_vertex_id_to_d_hat.resize(abd_vertex_count);
+        h_vertex_id_to_thickness.resize(abd_vertex_count);
 
         span v2b     = h_vertex_id_to_body_id;
         span v2c     = h_vertex_id_to_contact_element_id;
         span v2sc    = h_vertex_id_to_subscene_contact_element_id;
         span v2d_hat = h_vertex_id_to_d_hat;
+        span v2thick = h_vertex_id_to_thickness;
 
         for_each(
             geo_slots,
@@ -418,6 +421,11 @@ void AffineBodyDynamics::Impl::_build_geometry_on_host(WorldVisitor& world)
                 auto subscene_element_id =
                     sc.meta().find<IndexT>(builtin::subscene_element_id);
 
+                // AffineBodyShell / AffineBodyRod write the radius of the
+                // solid here; as for finite elements, contact keeps that
+                // distance from the mid-surface or centre line
+                auto vert_thickness = sc.vertices().find<Float>(builtin::thickness);
+
                 for(auto i : range(body_count))
                 {
                     auto body_vert_offset = vert_offset + i * vert_count;
@@ -427,6 +435,12 @@ void AffineBodyDynamics::Impl::_build_geometry_on_host(WorldVisitor& world)
                     auto v2c_span  = v2c.subspan(body_vert_offset, vert_count);
                     auto v2sc_span = v2sc.subspan(body_vert_offset, vert_count);
                     auto v2d_hat_span = v2d_hat.subspan(body_vert_offset, vert_count);
+                    auto v2thick_span = v2thick.subspan(body_vert_offset, vert_count);
+
+                    if(vert_thickness)
+                        std::ranges::copy(vert_thickness->view(), v2thick_span.begin());
+                    else
+                        std::ranges::fill(v2thick_span, 0.0);
 
                     std::ranges::fill(v2b_span, body_id);
 

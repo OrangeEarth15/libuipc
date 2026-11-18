@@ -245,7 +245,7 @@ class HalfPlaneVertexDistanceCheck final : public SanityChecker
 
             for(auto I : range(instance_count))
             {
-                const Vector3& N = Ns[I];
+                const Vector3  N = Ns[I].normalized();
                 const Vector3& P = Ps[I];
 
                 for(auto vI : range(Vs.size()))

@@ -161,7 +161,7 @@ Per-instance (each instance is one affine body sharing the same rest geometry).
 | Location | Attribute | Type | Description |
 |----------|-----------|------|-------------|
 | `sc.meta()` | `is_codim` | `IndexT` | Always `1` for shell/rod, indicating a codimensional body. |
-| `sc.vertices()` | `thickness` | `Float` | Thickness radius $r$. For shells, the effective slab thickness is $2r$; for rods, the cross-section radius. |
+| `sc.vertices()` | `thickness` | `Float` | Thickness radius $r$. For shells, the effective slab thickness is $2r$; for rods, the cross-section radius. Contact keeps this distance from the mid-surface or centre line, as it does for finite-element vertices. |
 
 ### Dyadic Mass and the 12x12 Mass Matrix
 

@@ -234,6 +234,7 @@ class AffineBodyDynamics : public SimSystem
         Float             default_d_hat = 0.01;
         vector<ABDJacobi> h_vertex_id_to_J;
         vector<Float>     h_vertex_id_to_d_hat;
+        vector<Float>     h_vertex_id_to_thickness;
         vector<IndexT>    h_vertex_id_to_body_id;
         vector<IndexT>    h_vertex_id_to_contact_element_id;
         vector<IndexT>    h_vertex_id_to_subscene_contact_element_id;

@@ -222,7 +222,7 @@ namespace
             if(!allow_PP_contact(contact_mask_tabular, cids))
                 return false;
 
-            bool V_is_codim = dimensions(V) <= 2;  // codim 0D vert and vert from codim 1D edge
+            bool V_is_codim = dimensions(V) <= 1;  // codim 0D vert and vert from codim 1D edge
 
             if(V_is_codim && V >= codimV)  // avoid duplicate CodimP-CodimP pairs
                 return false;

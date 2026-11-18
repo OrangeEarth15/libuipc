@@ -20,7 +20,7 @@ Headers: `include/uipc/constitution/`; implementations: `src/constitution/`; mat
 - Variants:
   - #1 OrthoPotential: $V=\kappa\bar v\|AA^T-I\|_F^2$
   - #2 ARAP: $V=\kappa\bar v\|A-R\|_F^2$
-  - `AffineBodyShell` / `AffineBodyRod`: codim variants (shell volume = A·2r, rod = πr²L), vertices carry `thickness`.
+  - `AffineBodyShell` / `AffineBodyRod`: codim variants (shell volume = A·2r, rod = πr²L), vertices carry `thickness`, which contact keeps as the distance from the mid-surface / centre line (any affine body's `thickness` vertex attribute does).
 
 ### Finite Element (FEM, `finite_element.md`)
 

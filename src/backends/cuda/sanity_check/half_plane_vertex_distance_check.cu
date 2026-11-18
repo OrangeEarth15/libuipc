@@ -294,7 +294,7 @@ class HalfPlaneVertexDistanceCheck final : public BackendSanityChecker
             IndexT HSCid = attr_scid ? attr_scid->view()[0] : IndexT(0);
 
             for(SizeT I = 0; I < instance_count; ++I)
-                hp_instances.push_back({Ns->view()[I],
+                hp_instances.push_back({Ns->view()[I].normalized(),
                                         Ps->view()[I],
                                         HCid,
                                         HSCid,
